@@ -13,10 +13,19 @@ class BaseModel(models.Model):
         abstract = True
 
 
+class Board(BaseModel):
+    company_uuid = models.CharField(max_length=200, null=True, blank=True)
+    name = models.CharField(max_length=100)
+
+    class Meta:
+        verbose_name = "Board"
+        verbose_name_plural = "Boards"
+        ordering = ["-created_at"]
+
+
 class Status(BaseModel):
     name = models.CharField(max_length=100)
-    description = models.TextField()
-    company_uuid = models.CharField(max_length=200, null=True, blank=True)
+    board = models.ForeignKey(Board, on_delete=models.CASCADE)
     order = models.IntegerField(default=0)
 
     class Meta:
@@ -24,11 +33,11 @@ class Status(BaseModel):
         verbose_name_plural = "Statuses"
         ordering = ["order", "-created_at"]
 
+
 class LeadType(BaseModel):
     name = models.CharField(max_length=100)
     status = models.ForeignKey(Status, on_delete=models.CASCADE)
     description = models.TextField()
-    company_uuid = models.CharField(max_length=200, null=True, blank=True)
     order = models.IntegerField(default=0)
 
     class Meta:
@@ -51,6 +60,7 @@ class Lead(BaseModel):
 class LeadHistory(BaseModel):
     lead = models.ForeignKey(Lead, on_delete=models.CASCADE)
     status = models.ForeignKey(Status, on_delete=models.CASCADE)
+    lead_type = models.ForeignKey(LeadType, on_delete=models.CASCADE)
 
     class Meta:
         verbose_name = "Lead History"

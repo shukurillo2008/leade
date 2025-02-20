@@ -6,6 +6,93 @@ from . import serializers as my_serializers
 from rest_framework import serializers as rest_serializers
 from drf_spectacular.utils import extend_schema, OpenApiParameter,inline_serializer
 from main.api.utils import CustomPagination
+from rest_framework import status
+######################################
+# Board
+######################################
+
+
+class BoardApiView(APIView):
+
+    @extend_schema(
+        request=my_serializers.BoardSerializer,
+        responses={200: my_serializers.BoardSerializer(many=True)},
+        summary="Get all boards",
+        description="Get all boards",
+        tags=["Board"],
+    )
+    def get(self, request):
+        """
+        Get all boards
+        """
+        boards = models.Board.objects.filter(is_active=True, company_uuid = request.user.id)
+        serializer = my_serializers.BoardSerializer(boards, many=True)
+        return Response(serializer.data)
+    
+
+    @extend_schema(
+        request=my_serializers.BoardSerializer,
+        responses={200: my_serializers.BoardSerializer},
+        summary="Create a new board",
+        description="Create a new board",
+        tags=["Board"],
+    )
+    def post(self, request):
+        """
+        Create a new board
+        """
+        serializer = my_serializers.BoardSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+    
+    @extend_schema(
+        responses={200: {"message": "Board deleted successfully"}},
+        summary="Delete a board",
+        description="Delete a board",
+        tags=["Board"],
+        parameters=[
+            OpenApiParameter(
+                name="uuid",
+                description="Board UUID",
+                required=True,
+                type=str
+            ),
+        ],
+    )   
+    def delete(self, request):
+        """
+        Delete a board
+        """
+        board = models.Board.objects.get(uuid=request.query_params.get("uuid"))
+        board.is_active = False
+        board.save()
+        return Response({"message": "Board deleted successfully"})
+    
+    @extend_schema(
+        request=my_serializers.BoardSerializer,
+        responses={200: my_serializers.BoardSerializer},
+        summary="Update a board",
+        description="Update a board",
+        tags=["Board"],
+        parameters=[
+            OpenApiParameter(
+                name="uuid",
+                description="Board UUID",
+                required=True,
+                type=str
+            ),
+        ],
+    )
+    def patch(self, request):
+        """
+        Update a board
+        """
+        board = models.Board.objects.get(uuid=request.query_params.get("uuid"))
+        serializer = my_serializers.BoardSerializer(board, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
 ######################################
 # Status
@@ -19,8 +106,8 @@ class StatusApiView(APIView):
         summary="Get all statuses",
         parameters=[
             OpenApiParameter(
-                name="company_uuid",
-                description="Company UUID",
+                name="board_uuid",
+                description="Board UUID",
                 required=False,
                 type=str
             ),
@@ -32,9 +119,9 @@ class StatusApiView(APIView):
         """
         Get all statuses
         """
-        statuses = models.Status.objects.filter(is_active=True)
-        if request.query_params.get("company_uuid"):
-            statuses = statuses.filter(company_uuid=request.query_params.get("company_uuid"))
+        statuses = models.Status.objects.filter(is_active=True, board__company_uuid = request.user.id)
+        if request.query_params.get("board_uuid"):
+            statuses = statuses.filter(board__uuid=request.query_params.get("board_uuid"))
         serializer = my_serializers.StatusSerializer(statuses, many=True)
         return Response(serializer.data)
 
@@ -49,6 +136,13 @@ class StatusApiView(APIView):
         """
         Create a new status
         """
+        if not request.data.get("order"):
+            try:
+                biggest_status = models.Status.objects.filter(board = request.data.get("board"), is_active = True).order_by('order').last()
+            except:
+                biggest_status = 0
+
+            request.data['order'] = biggest_status.order + 1
 
         serializer = my_serializers.StatusSerializer(data=request.data) 
         serializer.is_valid(raise_exception=True)
@@ -83,8 +177,7 @@ class StatusApiView(APIView):
             name="UpdateStatusSerializer",
             fields={
                 "name": rest_serializers.CharField(required=False),
-                "description": rest_serializers.CharField(required=False),
-                "company_uuid": rest_serializers.UUIDField(required=False),
+                "board_uuid": rest_serializers.UUIDField(required=False),
             },
         ),
         responses={200: my_serializers.StatusSerializer},
@@ -121,8 +214,8 @@ class LeadTypeApiView(APIView):
         responses={200: my_serializers.LeadTypeSerializer(many=True)},
         parameters=[
             OpenApiParameter(
-                name="company_uuid",
-                description="Company UUID",
+                name="status_uuid",
+                description="Status UUID",
                 required=False,
                 type=str
             ),
@@ -135,9 +228,9 @@ class LeadTypeApiView(APIView):
         """
         Get all lead types
         """
-        lead_types = models.LeadType.objects.filter(is_active=True)
-        if request.query_params.get("company_uuid"):
-            lead_types = lead_types.filter(company_uuid=request.query_params.get("company_uuid"))
+        lead_types = models.LeadType.objects.filter(is_active=True, status__board__company_uuid = request.user.id)
+        if request.query_params.get("status_uuid"):
+            lead_types = lead_types.filter(status__uuid=request.query_params.get("status_uuid"))
         serializer = my_serializers.LeadTypeSerializer(lead_types, many=True)
         return Response(serializer.data)
 
@@ -230,27 +323,20 @@ class LeadApiView(APIView):
                 required=False,
                 type=str
             ),
-            OpenApiParameter(
-                name="company_uuid",
-                description="Company UUID",
-                required=False,
-                type=str
-            ),
         ],  
     )
     def get(self, request):
         """
         Get all leads
         """
-        leads = models.Lead.objects.filter(is_active=True)
+
+        leads = models.Lead.objects.filter(is_active=True, type__status__board__company_uuid = request.user.id)
+
         if request.query_params.get("type"):
             leads = leads.filter(type__uuid=request.query_params.get("type"))
         
         if request.query_params.get("status"):
             leads = leads.filter(type__status__uuid=request.query_params.get("status"))
-
-        if request.query_params.get("company_uuid"):
-            leads = leads.filter(type__company_uuid=request.query_params.get("company_uuid"))
             
         serializer = my_serializers.LeadSerializer(leads, many=True)
         return Response(serializer.data)
@@ -315,12 +401,12 @@ class LeadApiView(APIView):
         """
         lead = models.Lead.objects.get(uuid=request.query_params.get("uuid"))
         if request.data.get("type"):
-            old_type = models.LeadType.objects.get(uuid=request.data.get("type"))
-            if old_type != lead.type:
+            lead_type = models.LeadType.objects.get(uuid=request.data.get("type"))
+            if lead.type != lead_type:
                 models.LeadHistory.objects.create(
                     lead=lead,
-                    type=old_type,
-                    status=lead.type.status
+                    lead_type = lead_type,
+                    status=lead_type.status
                 )
         serializer = my_serializers.LeadSerializer(lead, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)

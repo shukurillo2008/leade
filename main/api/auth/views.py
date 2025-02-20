@@ -75,7 +75,7 @@ from main import models
 def getTokensForUser(request):
     username = request.data.get('username')
     password = request.data.get('password')
-
+    
     if not username or not password:
         return Response(
             {"error": "Please provide both username and password."},

@@ -2,11 +2,23 @@ from rest_framework import serializers
 from main import models
 
 
+class BoardSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.Board
+        exclude = ["is_active", "id"]
+
+
+
 
 class StatusSerializer(serializers.ModelSerializer):
+    board = serializers.SlugRelatedField(slug_field="uuid", queryset=models.Board.objects.filter(is_active=True))
+    board_name = serializers.CharField(source="board.name", read_only=True)
+
     class Meta:
         model = models.Status
         exclude = ["is_active", "id"]
+    
+    
 
         
 class LeadTypeSerializer(serializers.ModelSerializer):
