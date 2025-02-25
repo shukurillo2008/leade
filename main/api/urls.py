@@ -12,4 +12,5 @@ urlpatterns = [
     path('lead-type/', views.LeadTypeApiView.as_view(), name='lead_type_url'),
     path('lead/', views.LeadApiView.as_view(), name='lead_url'),
     path('lead-history/', views.LeadHistoryApiView.as_view(), name='lead_history_url'),
+    path('clear/', views.ClearApiView.as_view(), name='clear_url'),
 ]

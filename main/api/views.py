@@ -17,6 +17,14 @@ class BoardApiView(APIView):
     @extend_schema(
         request=my_serializers.BoardSerializer,
         responses={200: my_serializers.BoardSerializer(many=True)},
+        parameters=[
+            OpenApiParameter(
+                name="company_uuid",
+                description="Company UUID",
+                required=False,
+                type=str
+            ),
+        ],
         summary="Get all boards",
         description="Get all boards",
         tags=["Board"],
@@ -25,9 +33,19 @@ class BoardApiView(APIView):
         """
         Get all boards
         """
-        boards = models.Board.objects.filter(is_active=True, company_uuid = request.user.id)
+        company_uuid = request.GET.get("company_uuid")
+
+        if company_uuid:
+            boards = models.Board.objects.filter(is_active=True, company_uuid = company_uuid).order_by('id')
+        else:
+            boards = models.Board.objects.filter(is_active=True, company_uuid = request.user.id).order_by('id')
+
         serializer = my_serializers.BoardSerializer(boards, many=True)
-        return Response(serializer.data)
+        return Response(
+            {
+                "boards": serializer.data
+            }
+        )
     
 
     @extend_schema(
@@ -41,9 +59,16 @@ class BoardApiView(APIView):
         """
         Create a new board
         """
+
+        if request.data.get("company_uuid") == None:
+            request.data["company_uuid"] = request.user.id
+        else:
+            request.data["company_uuid"] = request.data.get("company_uuid")
+
         serializer = my_serializers.BoardSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
+
         return Response(serializer.data)
     
     @extend_schema(
@@ -69,6 +94,7 @@ class BoardApiView(APIView):
         board.save()
         return Response({"message": "Board deleted successfully"})
     
+
     @extend_schema(
         request=my_serializers.BoardSerializer,
         responses={200: my_serializers.BoardSerializer},
@@ -108,7 +134,7 @@ class StatusApiView(APIView):
             OpenApiParameter(
                 name="board_uuid",
                 description="Board UUID",
-                required=False,
+                required=True,
                 type=str
             ),
         ],
@@ -119,11 +145,16 @@ class StatusApiView(APIView):
         """
         Get all statuses
         """
-        statuses = models.Status.objects.filter(is_active=True, board__company_uuid = request.user.id)
-        if request.query_params.get("board_uuid"):
-            statuses = statuses.filter(board__uuid=request.query_params.get("board_uuid"))
+        
+        if request.GET.get("board_uuid"):
+            statuses = models.Status.objects.filter(is_active=True, board__uuid=request.query_params.get("board_uuid")).order_by('order')
+        
         serializer = my_serializers.StatusSerializer(statuses, many=True)
-        return Response(serializer.data)
+        return Response(
+            {
+                "statuses": serializer.data
+            }
+        )
 
     @extend_schema(
         request=my_serializers.StatusSerializer,
@@ -139,10 +170,10 @@ class StatusApiView(APIView):
         if not request.data.get("order"):
             try:
                 biggest_status = models.Status.objects.filter(board = request.data.get("board"), is_active = True).order_by('order').last()
+                request.data['order'] = biggest_status.order + 1
             except:
-                biggest_status = 0
+                request.data['order'] = 1
 
-            request.data['order'] = biggest_status.order + 1
 
         serializer = my_serializers.StatusSerializer(data=request.data) 
         serializer.is_valid(raise_exception=True)
@@ -228,11 +259,15 @@ class LeadTypeApiView(APIView):
         """
         Get all lead types
         """
-        lead_types = models.LeadType.objects.filter(is_active=True, status__board__company_uuid = request.user.id)
+        lead_types = models.LeadType.objects.filter(is_active=True, status__board__company_uuid = request.user.id).order_by('order')
         if request.query_params.get("status_uuid"):
             lead_types = lead_types.filter(status__uuid=request.query_params.get("status_uuid"))
         serializer = my_serializers.LeadTypeSerializer(lead_types, many=True)
-        return Response(serializer.data)
+        return Response(
+            {
+                "leadtypes":serializer.data
+            }
+        )
 
     @extend_schema(
         request=my_serializers.LeadTypeSerializer,
@@ -245,7 +280,15 @@ class LeadTypeApiView(APIView):
         """
         Create a new lead type
         """
+        if not request.data.get("order"):
+            try:
+                biggest_lead_type = models.LeadType.objects.filter(status = request.data.get("status"), is_active = True).order_by('order').last()
+                request.data['order'] = biggest_lead_type.order + 1
+            except:
+                request.data['order'] = 1
+
         serializer = my_serializers.LeadTypeSerializer(data=request.data)
+
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
@@ -323,6 +366,18 @@ class LeadApiView(APIView):
                 required=False,
                 type=str
             ),
+            OpenApiParameter(
+                name="page_size",
+                description="Page size",
+                required=False,
+                type=int
+            ),
+            OpenApiParameter(
+                name="page",
+                description="Page number",
+                required=False,
+                type=int
+            ),
         ],  
     )
     def get(self, request):
@@ -337,9 +392,12 @@ class LeadApiView(APIView):
         
         if request.query_params.get("status"):
             leads = leads.filter(type__status__uuid=request.query_params.get("status"))
-            
+        
+        paginator = CustomPagination()
+        paginator.page_size = request.query_params.get("page_size", 10)
+        leads = paginator.paginate_queryset(leads, request)
         serializer = my_serializers.LeadSerializer(leads, many=True)
-        return Response(serializer.data)
+        return paginator.get_paginated_response(serializer.data)
     
     @extend_schema(
         request=my_serializers.LeadSerializer,
@@ -449,6 +507,90 @@ class LeadHistoryApiView(APIView):
         lead_histories = paginator.paginate_queryset(lead_histories, request)
         serializer = my_serializers.LeadHistorySerializer(lead_histories, many=True)
         return paginator.get_paginated_response(serializer.data)
+
+
+#####################################
+# Actions
+#####################################
+
+
+class ChangeOrderApiView(APIView):
+
+    def patch(self, request):
+        """
+        Change the order of a status
+        """
+        data = request.data.get("data")
+        for item in data:
+            status = models.Status.objects.get(uuid=item.get("uuid"))
+            status.order = item.get("order")
+            status.save()
+
+        return Response({"message": "Status order changed successfully"})
+
+class ClearApiView(APIView):
+
+    @extend_schema(
+        responses={200: {"message": "All lead types deleted successfully"}},
+        summary="Clear a lead type",
+        description="Clear a lead type",
+        tags=["Actions"],
+        parameters=[
+            OpenApiParameter(
+                name="board_uuid",
+                description="Board UUID",
+                required=False,
+                type=str
+            ),
+            OpenApiParameter(
+                name="status_uuid",
+                description="Status UUID",
+                required=False,
+                type=str
+            ),
+            OpenApiParameter(
+                name="leadtype_uuid",
+                description="Lead type UUID",
+                required=False,
+                type=str
+            ),
+            OpenApiParameter(
+                name="lead_uuid",
+                description="Lead UUID",
+                required=False,
+                type=str
+            ),
+        ],
+    )
+    def delete(self, request):
+
+        board_uuid = request.query_params.get("board_uuid")
+        status_uuid = request.query_params.get("status_uuid")
+        leadtype_uuid = request.query_params.get("leadtype_uuid")
+        lead_uuid = request.query_params.get("lead_uuid")
+
+        if board_uuid:
+            board = models.Board.objects.get(uuid=board_uuid)
+            board.is_active = False
+            board.save()
+
+        if status_uuid:
+            status = models.Status.objects.get(uuid=status_uuid)
+            status.is_active = False
+            status.save()
+
+        if leadtype_uuid:
+            lead_type = models.LeadType.objects.get(uuid=leadtype_uuid)
+            lead_type.is_active = False
+            lead_type.save()
+
+        if lead_uuid:
+            lead = models.Lead.objects.get(uuid=lead_uuid)
+            lead.is_active = False
+            lead.save()
+
+        return Response({"message": "All lead types deleted successfully"})
+
 
 
 

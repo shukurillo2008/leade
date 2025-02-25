@@ -13,6 +13,11 @@ class BoardSerializer(serializers.ModelSerializer):
 class StatusSerializer(serializers.ModelSerializer):
     board = serializers.SlugRelatedField(slug_field="uuid", queryset=models.Board.objects.filter(is_active=True))
     board_name = serializers.CharField(source="board.name", read_only=True)
+    leadtypes = serializers.SerializerMethodField(read_only=True)
+
+    def get_leadtypes(self, obj):
+        leadtypes = models.LeadType.objects.filter(status=obj, is_active=True).order_by('order')
+        return LeadTypeSerializer(leadtypes, many=True).data
 
     class Meta:
         model = models.Status
@@ -32,7 +37,7 @@ class LeadTypeSerializer(serializers.ModelSerializer):
         
 class LeadSerializer(serializers.ModelSerializer):
     type = serializers.SlugRelatedField(slug_field="uuid", queryset=models.LeadType.objects.filter(is_active=True))
-    type_name = serializers.SlugRelatedField(slug_field="name", read_only=True)
+    type_name = serializers.CharField(source="type.name", read_only=True)
 
     class Meta:
         model = models.Lead

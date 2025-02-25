@@ -17,6 +17,14 @@ class Board(BaseModel):
     company_uuid = models.CharField(max_length=200, null=True, blank=True)
     name = models.CharField(max_length=100)
 
+    def save(self, *args, **kwargs):
+        if self.company_uuid == False:
+            statuses = Status.objects.filter(board=self)
+            for status in statuses:
+                status.is_active = False
+                status.save()
+        super().save(*args, **kwargs)
+
     class Meta:
         verbose_name = "Board"
         verbose_name_plural = "Boards"
@@ -28,6 +36,15 @@ class Status(BaseModel):
     board = models.ForeignKey(Board, on_delete=models.CASCADE)
     order = models.IntegerField(default=0)
 
+    def save(self, *args, **kwargs):
+        if self.board == False:
+            leadtypes = LeadType.objects.filter(status=self)
+            for leadtype in leadtypes:
+                leadtype.is_active = False
+                leadtype.save()
+        super().save(*args, **kwargs)
+
+
     class Meta:
         verbose_name = "Status"
         verbose_name_plural = "Statuses"
@@ -36,9 +53,18 @@ class Status(BaseModel):
 
 class LeadType(BaseModel):
     name = models.CharField(max_length=100)
-    status = models.ForeignKey(Status, on_delete=models.CASCADE)
-    description = models.TextField()
+    status = models.ForeignKey(Status, on_delete=models.CASCADE, related_name="leadtypes")
+    description = models.TextField(default="null")
     order = models.IntegerField(default=0)
+
+    def save(self, *args, **kwargs):
+        if self.status == False:
+            leads = Lead.objects.filter(type=self)
+            for lead in leads:
+                lead.is_active = False
+                lead.save()
+
+        super().save(*args, **kwargs)
 
     class Meta:
         verbose_name = "Lead Type"
@@ -47,7 +73,18 @@ class LeadType(BaseModel):
 
 class Lead(BaseModel):
     title = models.CharField(max_length=100)
-    description = models.CharField(max_length=300)
+    phone_number = models.CharField(max_length=100, null=True, blank=True)
+    gender = models.CharField(
+        choices=[
+            ("male", "Male"),
+            ("female", "Female"),
+        ],
+        max_length=100,
+        null=True,
+        blank=True,
+    )
+    birth_date = models.DateField(null=True, blank=True)
+    description = models.CharField(max_length=300, default="null")
     type = models.ForeignKey(LeadType, on_delete=models.CASCADE)
     extra = models.JSONField(default=dict, null=True, blank=True)
     order = models.IntegerField(default=0)
