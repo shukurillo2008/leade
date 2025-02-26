@@ -94,6 +94,7 @@ class Lead(BaseModel):
         verbose_name_plural = "Leads"
         ordering = ["order", "-created_at"]
 
+
 class LeadHistory(BaseModel):
     lead = models.ForeignKey(Lead, on_delete=models.CASCADE)
     status = models.ForeignKey(Status, on_delete=models.CASCADE)

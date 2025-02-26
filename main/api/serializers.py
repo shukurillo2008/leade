@@ -28,7 +28,7 @@ class StatusSerializer(serializers.ModelSerializer):
         
 class LeadTypeSerializer(serializers.ModelSerializer):
     status = serializers.SlugRelatedField(slug_field="uuid", queryset=models.Status.objects.filter(is_active=True))
-    status_name = serializers.SlugRelatedField(slug_field="name", read_only=True)
+    status_name = serializers.CharField(source="status.name", read_only=True)
     
     class Meta:
         model = models.LeadType
