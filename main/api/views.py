@@ -393,11 +393,12 @@ class LeadApiView(APIView):
         if request.query_params.get("status"):
             leads = leads.filter(type__status__uuid=request.query_params.get("status"))
         
-        paginator = CustomPagination()
-        paginator.page_size = request.query_params.get("page_size", 10)
-        leads = paginator.paginate_queryset(leads, request)
         serializer = my_serializers.LeadSerializer(leads, many=True)
-        return paginator.get_paginated_response(serializer.data)
+        return Response(
+            {
+                "leads": serializer.data
+            }
+        )
     
     @extend_schema(
         request=my_serializers.LeadSerializer,
